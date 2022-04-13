@@ -10,6 +10,8 @@ import { HelloResolver } from "./resolvers/hello";
 import { PostResolver } from "./resolvers/post";
 import { UserResolver } from "./resolvers/user";
 import { MyContext } from "./types";
+// import { sendEmail } from "./utils/sendEmail";
+// import { User } from "./entities/User";
 
 // import redis from "redis";
 // import session from "express-session";
@@ -70,7 +72,7 @@ declare module 'express-session' {
             resolvers: [HelloResolver, PostResolver, UserResolver],
             validate: false
         }),
-        context: ({ req, res }): MyContext => ({ em: orm.em, req, res })
+        context: ({ req, res }): MyContext => ({ em: orm.em, req, res, redis: redisClient })
     });
     await apolloServer.start();
 
