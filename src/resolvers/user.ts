@@ -52,13 +52,54 @@ export class UserResolver {
             return true;
         }
         const token = v4();
+        console.log("token", token);
         redis.set(FORGET_PASSWORD_PREFIX + token, user.id, "ex", 1000 * 60 * 60 * 24 * 3);
 
         await sendEmail(
             email,
-            `<a href="http://localhost:3000/change-password/${token}">Reset Password></a>`
+            `<a href="http://localhost:3000/change-password/${token}">Reset Password</a>`
         );
         return true;
+    }
+
+    @Mutation(() => UserResponse)
+    async changePassword(
+        @Arg("token") token: string,
+        @Arg("newPassword") newPassword: string,
+        @Ctx() { em, redis, req }: MyContext
+    ): Promise<UserResponse> {
+        console.log("token", token);
+        if ( newPassword.length <=2 ) {
+            return {errors: [{
+                name: "newPassword",
+                "message": "Password should be at least 3 characters long"
+            }]};
+        }
+        const key = FORGET_PASSWORD_PREFIX + token;
+        console.log("key", key);
+        const userId = await redis.get(key);
+        console.log("userId", userId);
+        if ( !userId ) {
+            return {errors: [{
+                name: "newPassword",
+                "message": "Invalid token"
+            }]};
+        }
+
+        const user = await em.findOne(User, {id: userId })
+        if ( !user ) {
+            return {errors: [{
+                name: "newPassword",
+                "message": "User is not available"
+            }]};
+        }
+        user.password = await argon2.hash(newPassword);
+        await em.persistAndFlush(user);
+
+        // Login user after change password
+        req.session.userId = user.id;
+
+        return { user };
     }
 
     @Mutation(() => UserResponse)

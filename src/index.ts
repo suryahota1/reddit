@@ -74,6 +74,7 @@ declare module 'express-session' {
         }),
         context: ({ req, res }): MyContext => ({ em: orm.em, req, res, redis: redisClient })
     });
+    console.log("val-------", await redisClient.hGetAll("key"));
     await apolloServer.start();
 
     const cors = {
