@@ -19,9 +19,11 @@ import { MyContext } from "./types";
 
 // const RedisStore = connectRedis(session);
 
-const session = require("express-session");
+import session from "express-session";
+
 let RedisStore = require("connect-redis")(session);
-const { createClient } = require("redis");
+
+import { createClient } from "redis";
 
 declare module 'express-session' {
     export interface SessionData {
@@ -74,7 +76,7 @@ declare module 'express-session' {
         }),
         context: ({ req, res }): MyContext => ({ em: orm.em, req, res, redis: redisClient })
     });
-    console.log("val-------", await redisClient.hGetAll("key"));
+
     await apolloServer.start();
 
     const cors = {

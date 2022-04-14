@@ -59,7 +59,7 @@ export class UserResolver {
             email,
             `<a href="http://localhost:3000/change-password/${token}">Reset Password</a>`
         );
-        return true;
+        return false;
     }
 
     @Mutation(() => UserResponse)
@@ -67,7 +67,7 @@ export class UserResolver {
         @Arg("token") token: string,
         @Arg("newPassword") newPassword: string,
         @Ctx() { em, redis, req }: MyContext
-    ): Promise<UserResponse> {
+    ): Promise<UserResponse | undefined> {
         console.log("token", token);
         if ( newPassword.length <=2 ) {
             return {errors: [{
@@ -76,30 +76,34 @@ export class UserResolver {
             }]};
         }
         const key = FORGET_PASSWORD_PREFIX + token;
-        console.log("key", key);
-        const userId = await redis.get(key);
-        console.log("userId", userId);
-        if ( !userId ) {
-            return {errors: [{
-                name: "newPassword",
-                "message": "Invalid token"
-            }]};
-        }
+        redis.get(key, async function(err: any, reply: any) {
+            console.log("reply--------------", reply);
+            console.log("err------------", err);
+            if ( err || !reply ) {
+                return {errors: [{
+                    name: "newPassword",
+                    "message": "Invalid token"
+                }]};
+            } else {
+                const userId = parseInt(reply);
+                const user = await em.findOne(User, {id: userId })
+                if ( !user ) {
+                    return {errors: [{
+                        name: "newPassword",
+                        "message": "User is not available"
+                    }]};
+                }
+                user.password = await argon2.hash(newPassword);
+                await em.persistAndFlush(user);
 
-        const user = await em.findOne(User, {id: userId })
-        if ( !user ) {
-            return {errors: [{
-                name: "newPassword",
-                "message": "User is not available"
-            }]};
-        }
-        user.password = await argon2.hash(newPassword);
-        await em.persistAndFlush(user);
+                await redis.del(key);
 
-        // Login user after change password
-        req.session.userId = user.id;
+                // Login user after change password
+                req.session.userId = user.id;
 
-        return { user };
+                return { user };
+            }
+        });
     }
 
     @Mutation(() => UserResponse)
