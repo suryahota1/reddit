@@ -2,7 +2,6 @@ import { User } from "./../entities/User";
 import { MyContext } from "src/types";
 import { Resolver, Mutation, Arg, Field, Ctx, ObjectType, Query } from "type-graphql";
 import argon2 from "argon2";
-import { RequiredEntityData } from "@mikro-orm/core";
 import { FORGET_PASSWORD_PREFIX, USER_INFO_COOKIE } from "./../constants";
 import { UsernamePasswordInput } from "./UsernamePasswordInput";
 import { validateRegister } from "./../utils/validateRegister";
@@ -32,22 +31,23 @@ export class UserResolver {
 
     @Query(() => User, { nullable: true })
     async me(
-        @Ctx() { req, em }: MyContext
+        @Ctx() { req }: MyContext
     ) {
         console.log("session", req.session);
         if ( !req.session.userId ) {
             return null;
         }
-        const user = await em.findOne(User, { id: req.session.userId });
+        const user = await User.findOneBy({ id: req.session.userId });
+        // const user = await em.findOne(User, { id: req.session.userId });
         return user;
     }
 
     @Mutation(() => Boolean)
     async forgotPassword(
         @Arg("email") email: string,
-        @Ctx() { em, redis }: MyContext
+        @Ctx() { redis }: MyContext
     ) {
-        const user = await em.findOne(User, { email });
+        const user = await User.findOneBy({ email });
         if ( !user ) {
             return true;
         }
@@ -66,50 +66,61 @@ export class UserResolver {
     async changePassword(
         @Arg("token") token: string,
         @Arg("newPassword") newPassword: string,
-        @Ctx() { em, redis, req }: MyContext
-    ): Promise<UserResponse | undefined> {
-        console.log("token", token);
-        if ( newPassword.length <=2 ) {
-            return {errors: [{
-                name: "newPassword",
-                "message": "Password should be at least 3 characters long"
-            }]};
-        }
-        const key = FORGET_PASSWORD_PREFIX + token;
-        redis.get(key, async function(err: any, reply: any) {
-            console.log("reply--------------", reply);
-            console.log("err------------", err);
-            if ( err || !reply ) {
-                return {errors: [{
+        @Ctx() { redis, req }: MyContext
+    ): Promise<UserResponse> {
+        return new Promise(async ( resolve ) => {
+            console.log("token", token);
+            if ( newPassword.length <=2 ) {
+                resolve({errors: [{
                     name: "newPassword",
-                    "message": "Invalid token"
-                }]};
-            } else {
-                const userId = parseInt(reply);
-                const user = await em.findOne(User, {id: userId })
-                if ( !user ) {
-                    return {errors: [{
-                        name: "newPassword",
-                        "message": "User is not available"
-                    }]};
-                }
-                user.password = await argon2.hash(newPassword);
-                await em.persistAndFlush(user);
-
-                await redis.del(key);
-
-                // Login user after change password
-                req.session.userId = user.id;
-
-                return { user };
+                    "message": "Password should be at least 3 characters long"
+                }]});
             }
+            const key = FORGET_PASSWORD_PREFIX + token;
+            function asd (): Promise<UserResponse> {
+                return new Promise(( resolve1 ) => {
+                    console.log("key", key);
+                    redis.get(key, async function(err: any, reply: any) {
+                        console.log("reply--------------", reply);
+                        console.log("err------------", err);
+                        if ( err || reply == null ) {
+                            resolve1({errors: [{
+                                name: "newPassword",
+                                "message": "Invalid token"
+                            }]});
+                        } else {
+                            const userId = parseInt(reply);
+                            const user = await User.findOneBy({ id: userId });
+                            if ( !user ) {
+                                resolve1({errors: [{
+                                    name: "newPassword",
+                                    "message": "User is not available"
+                                }]});
+                                return;
+                            }
+                            console.log("user------------", user);
+                            user.password = await argon2.hash(newPassword);
+                            await user.save();
+            
+                            await redis.del(key);
+                            console.log("deleted------------");
+                            // Login user after change password
+                            req.session.userId = user.id;
+            
+                            resolve1({ user });
+                        }
+                    });
+                });
+            }
+            const resp = await asd();
+            resolve(resp);
         });
     }
 
     @Mutation(() => UserResponse)
     async register (
         @Arg("options") options: UsernamePasswordInput,
-        @Ctx() { em, req }: MyContext
+        @Ctx() { req }: MyContext
     ): Promise<UserResponse> {
         const errors = validateRegister(options);
         if ( errors ) {
@@ -118,15 +129,21 @@ export class UserResolver {
             };
         }
         const hashedPassword = await argon2.hash(options.password);
-        const user = em.create(User, { 
-            username: options.username, 
-            password: hashedPassword,
-            email: options.email 
-        } as RequiredEntityData<User>);
+        const user = new User();
+        user.username = options.username;
+        user.password = hashedPassword;
+        user.email = options.email;
+        
+        // const user = em.create(User, { 
+        //     username: options.username, 
+        //     password: hashedPassword,
+        //     email: options.email 
+        // } as RequiredEntityData<User>);
         try {
-            await em.persistAndFlush(user);   
+            // await User.save(user);
+            await user.save();   
         } catch ( e ) {
-            console.log(e.message);
+            console.log("register err --------", e);
             if ( e.code === "23505" ) {
                 return {
                     errors: [{
@@ -148,9 +165,9 @@ export class UserResolver {
     async login (
         @Arg("userNameOrEmail") userNameOrEmail: string,
         @Arg("password") password: string,
-        @Ctx() { em, req }: MyContext
+        @Ctx() { req }: MyContext
     ): Promise<UserResponse> {
-        const userRef = await em.findOne(User, userNameOrEmail.includes("@") ? { email: userNameOrEmail } : { username: userNameOrEmail });
+        const userRef = await User.findOneBy(userNameOrEmail.includes("@") ? { email: userNameOrEmail } : { username: userNameOrEmail });
         console.log("login user", userRef);
         if ( !userRef ) {
             return {

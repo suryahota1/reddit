@@ -1,8 +1,6 @@
-import { MikroORM,  } from "@mikro-orm/core";
-// RequiredEntityData
+import "reflect-metadata";
+import AppDataSource from "./orm";
 import { USER_INFO_COOKIE, __prod__ } from "./constants";
-// import { Post } from "./entities/Posts";
-import mikroOrmConfig from "./mikro-orm.config";
 import express from "express";
 import { ApolloServer } from "apollo-server-express";
 import { buildSchema } from "type-graphql";
@@ -10,20 +8,10 @@ import { HelloResolver } from "./resolvers/hello";
 import { PostResolver } from "./resolvers/post";
 import { UserResolver } from "./resolvers/user";
 import { MyContext } from "./types";
-// import { sendEmail } from "./utils/sendEmail";
-// import { User } from "./entities/User";
-
-// import redis from "redis";
-// import session from "express-session";
-// import connectRedis, { RedisStoreOptions } from "connect-redis";
-
-// const RedisStore = connectRedis(session);
-
 import session from "express-session";
+import { createClient } from "redis";
 
 let RedisStore = require("connect-redis")(session);
-
-import { createClient } from "redis";
 
 declare module 'express-session' {
     export interface SessionData {
@@ -32,13 +20,8 @@ declare module 'express-session' {
 }
 
 (async () => {
-    const orm = await MikroORM.init(mikroOrmConfig);
-    await orm.getMigrator().up();
-
+    await AppDataSource.initialize();
     const app = express();
-
-    // const redisClient = redis.createClient({ legacyMode: true })
-    // redisClient.connect().catch(console.error);
 
     let redisClient = createClient({ legacyMode: true })
 
@@ -74,7 +57,7 @@ declare module 'express-session' {
             resolvers: [HelloResolver, PostResolver, UserResolver],
             validate: false
         }),
-        context: ({ req, res }): MyContext => ({ em: orm.em, req, res, redis: redisClient })
+        context: ({ req, res }): MyContext => ({ req, res, redis: redisClient })
     });
 
     await apolloServer.start();
@@ -89,11 +72,6 @@ declare module 'express-session' {
     app.listen(4000, () => {
         console.log("Started server on port 4000");
     });
-    // const post = orm.em.fork({}).create(Post, {title: "My first post"} as RequiredEntityData<Post>);
-    // await orm.em.persistAndFlush(post);
-    // await orm.em.nativeInsert(Post, {title: "My first post"});
-    // const posts = await orm.em.find(Post, {});
-    // console.log("posts", posts);
 })().catch(( err ) => {
     console.error("Main function err", err);
 });
