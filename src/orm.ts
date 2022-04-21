@@ -1,6 +1,7 @@
 import { DataSource } from "typeorm";
 import { __prod__ } from "./constants";
 import { Post } from "./entities/Posts";
+import { Updoot } from "./entities/Updoot";
 import { User } from "./entities/User";
 
 const AppDataSource = new DataSource({
@@ -10,7 +11,7 @@ const AppDataSource = new DataSource({
     password: "postgres",
     logging: true,
     synchronize: !__prod__,
-    entities: [ User, Post ]
+    entities: [ User, Post, Updoot ]
 });
 
 export default AppDataSource;
